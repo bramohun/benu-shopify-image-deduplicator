@@ -28,6 +28,9 @@ Verzió: 1.0.0
    - US-IMG-05: Mint Minőségbiztosító, szeretném a vizsgálatot leállítani adott számú
      duplikált termék (pl. 10 hibás termék) elérésekor, és a riportot vesszővel tagolva,
      befejezési időbélyeggel (yyyymmdd-hhmmss) menteni.
+   - US-IMG-06: Mint Rendszerüzemeltető, szeretném elkerülni a Shopify és Cloudflare HTTP 429
+     (Too Many Requests / Rate Limiting) túlterhelés-védelmi blokkolásait automatikus
+     exponenciális visszalépéssel (Exponential Backoff), Retry-After támogatással és állítható késleltetéssel.
 
 3. Kapcsolódó egyéb funkciók és felületek:
    - Shopify Storefront (.json termék-végpontok) és Sitemap XML feldolgozás.
@@ -98,6 +101,49 @@ HEADERS = {
     "X-Purpose": "Internal-SEO-Audit"
 }
 
+# Globális HTTP Session a kapcsolatok újrahasznosításához
+HTTP_SESSION = requests.Session()
+
+
+def robust_http_get(url: str, max_retries: int = 5, initial_timeout: int = 15) -> requests.Response:
+    """
+    Robusztus HTTP GET kérés kezelő:
+    - Automatikusan kezeli a HTTP 429 (Too Many Requests / Rate Limit) hibákat.
+    - Figyelembe veszi a szerver 'Retry-After' fejlécét.
+    - Exponenciális visszalépéssel (Exponential Backoff: 2s -> 4s -> 8s -> 16s) próbálkozik újra.
+    - Hálózati hiba esetén is újrapróbálkozik.
+    """
+    for attempt in range(max_retries):
+        try:
+            resp = HTTP_SESSION.get(url, headers=HEADERS, timeout=initial_timeout)
+            
+            # Rate limit (HTTP 429) észlelése
+            if resp.status_code == 429:
+                retry_after = resp.headers.get("Retry-After")
+                if retry_after and retry_after.isdigit():
+                    wait_seconds = float(retry_after) + 1.0
+                else:
+                    wait_seconds = float(2 ** (attempt + 1))
+                
+                print(f"  [RATE LIMIT 429] Szerver túlterheltség-védelem. Várakozás: {wait_seconds:.1f} mp (Újrapróbálkozás: {attempt + 1}/{max_retries})...")
+                time.sleep(wait_seconds)
+                continue
+            
+            # Átmeneti szerverhiba (502, 503, 504)
+            if resp.status_code in (502, 503, 504):
+                wait_seconds = 2.0 * (attempt + 1)
+                time.sleep(wait_seconds)
+                continue
+                
+            return resp
+        except (requests.exceptions.RequestException, requests.exceptions.Timeout) as e:
+            if attempt == max_retries - 1:
+                print(f"  [HÁLÓZATI HIBA] Nem sikerült elérni a címet ({url}): {e}")
+                return None
+            time.sleep(1.5 * (attempt + 1))
+            
+    return None
+
 
 def get_optimized_image_url(image_url: str, size: str = "300x300") -> str:
     """
@@ -141,11 +187,11 @@ def calculate_image_hashes(image_url: str):
     """
     target_url = get_optimized_image_url(image_url, size="300x300")
     try:
-        resp = requests.get(target_url, headers=HEADERS, timeout=12)
-        if resp.status_code != 200:
+        resp = robust_http_get(target_url, max_retries=3, initial_timeout=12)
+        if not resp or resp.status_code != 200:
             # Ha a méretezett változat nem elérhető, próbáljuk az eredetit
-            resp = requests.get(image_url, headers=HEADERS, timeout=12)
-            if resp.status_code != 200:
+            resp = robust_http_get(image_url, max_retries=3, initial_timeout=12)
+            if not resp or resp.status_code != 200:
                 return None, None
                 
         img = load_image_with_white_background(resp.content)
@@ -199,8 +245,11 @@ def process_single_product(product_url: str, threshold: int) -> list:
     json_url = clean_url if clean_url.endswith(".json") else f"{clean_url}.json"
 
     try:
-        resp = requests.get(json_url, headers=HEADERS, timeout=12)
-        if resp.status_code == 404:
+        resp = robust_http_get(json_url, max_retries=5, initial_timeout=15)
+        if not resp:
+            print(f"  [HIBA] Nem érkezett válasz a termékoldaltól: {json_url}")
+            return duplicates
+        elif resp.status_code == 404:
             print(f"  [HIBA] Termék JSON nem található (404): {json_url}")
             return duplicates
         elif resp.status_code != 200:
@@ -293,9 +342,9 @@ def fetch_product_urls_from_sitemap(sitemap_url: str) -> list:
     namespace = {"ns": "http://www.sitemaps.org/schemas/sitemap/0.9"}
 
     try:
-        resp = requests.get(sitemap_url, headers=HEADERS, timeout=20)
-        if resp.status_code != 200:
-            print(f"[HIBA] Nem sikerült letölteni a sitemap-et (HTTP {resp.status_code})")
+        resp = robust_http_get(sitemap_url, max_retries=4, initial_timeout=20)
+        if not resp or resp.status_code != 200:
+            print(f"[HIBA] Nem sikerült letölteni a sitemap-et (HTTP {resp.status_code if resp else 'N/A'})")
             return []
 
         root = ET.fromstring(resp.content)
@@ -313,8 +362,8 @@ def fetch_product_urls_from_sitemap(sitemap_url: str) -> list:
             for sub_url in product_sitemaps:
                 try:
                     print(f"  -> Al-sitemap beolvasása: {sub_url}")
-                    sub_resp = requests.get(sub_url, headers=HEADERS, timeout=20)
-                    if sub_resp.status_code == 200:
+                    sub_resp = robust_http_get(sub_url, max_retries=4, initial_timeout=20)
+                    if sub_resp and sub_resp.status_code == 200:
                         sub_root = ET.fromstring(sub_resp.content)
                         for elem in sub_root.findall("ns:url/ns:loc", namespace):
                             if elem.text and "/products/" in elem.text:
@@ -378,6 +427,12 @@ def main():
         help=f"Hamming-távolság küszöbérték (alapértelmezett: {DEFAULT_HAMMING_THRESHOLD}, 0=teljesen azonos, 1-6=nagyon hasonló/azonos)"
     )
     parser.add_argument(
+        "--delay",
+        type=float,
+        default=0.1,
+        help="Kérések közötti finom késleltetés másodpercben a Rate Limit (HTTP 429) elkerüléséhez (alapértelmezett: 0.1s)"
+    )
+    parser.add_argument(
         "--output",
         "-o",
         type=str,
@@ -398,6 +453,8 @@ def main():
     print(" SHOPIFY TERMÉKKÉP DUPLIKÁCIÓ SZŰRŐ ÉS AUDIT ESZKÖZ")
     print("=" * 80)
     print(f"Küszöbérték (Threshold)        : {args.threshold}")
+    if args.delay > 0:
+        print(f"Kérések közötti késleltetés    : {args.delay} mp (Shopify túlterhelés-védelem)")
     if args.max_dupes > 0:
         print(f"Duplikált termék leállási limit: {args.max_dupes} db hibás termék megtalálásakor")
 
@@ -446,6 +503,9 @@ def main():
     start_time = time.time()
     
     for idx, url in enumerate(target_urls, 1):
+        if args.delay > 0 and idx > 1:
+            time.sleep(args.delay)
+
         elapsed = time.time() - start_time
         pct = (idx / total_items) * 100 if total_items > 0 else 0
         
