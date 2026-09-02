@@ -1,0 +1,10 @@
+# ================================================================================
+# FSR (Funkcionális Specifikáció) Megjegyzés:
+# Mire használjuk: A shopify_image_deduplicator.py működéséhez szükséges Python
+#                 csomagok (HTTP kérések, képműveletek és képhash-elés) listája.
+# Kapcsolódó User Storyk: US-IMG-01 (Képi duplikáció detektálás)
+# Kapcsolódó felületek: Helyi Python futtatókörnyezet / pip package manager
+# ================================================================================
+requests>=2.31.0
+Pillow>=10.0.0
+ImageHash>=4.3.1

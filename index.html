@@ -1,0 +1,934 @@
+<!DOCTYPE html>
+<html lang="hu" class="dark">
+<head>
+  <!--
+  ================================================================================
+  FUNKCIONÁLIS SPECIFIKÁCIÓ (FSR) ÉS FELADATLEÍRÁS
+  ================================================================================
+  Modul: index.html (GitHub Pages Dashboard)
+  Verzió: 1.0.0
+  
+  1. Mire használjuk:
+     - Statikus, kliensoldali vizuális felület a Shopify termékkép duplikáció-audit
+       eredményeinek interaktív böngészésére, keresésére és exportálására.
+     - Lehetővé teszi a termékmenedzsment és SEO csapat számára, hogy egymás mellett
+       hasonlítsák össze a törlésre és megtartásra javasolt képeket.
+
+  2. Kapcsolódó User Storyk:
+     - US-DASH-01: Termékmenedzserként szeretném vizuálisan ellenőrizni az azonosnak
+       ítélt képeket, felbontásukat és formátumukat, hogy biztos lehessek a törlési döntésben.
+     - US-DASH-02: SEO szakértőként szeretném szűrni a listát kezdőbetűk szerint és letölteni
+       a legfrissebb CSV riportot egyetlen kattintással.
+     - US-DASH-03: Fejlesztőként szeretném egy kattintással kimásolni a Shopify GraphQL
+       törlési mutációt a redundáns képek API-s eltávolításához.
+
+  3. Kapcsolódó felületek és integrációk:
+     - GitHub Pages tárhely & GitHub Actions automatikus frissítés (`data/duplicates.json`).
+     - Shopify Admin GraphQL API (ProductDeleteImages mutation).
+     - Benu.hu éles termékoldalak (külső linkelés).
+
+  4. SEO és Akadálymentességi (WCAG 2.2 Level AA) Szempontok:
+     - WCAG 2.2 AA Kontrasztarányok: APCA és 4.5:1+ kontraszt mind sötét, mind világos módban.
+     - Fókuszkezelés & Billentyűzetes navigáció: Minden gomb és beviteli mező elérhető és fókuszálható (`:focus-visible`).
+     - Szemantikus HTML5: `<header>`, `<nav>`, `<main>`, `<section>`, `<article>`.
+     - Képernyőolvasó támogatás: Megfelelő `aria-label`, `aria-live` és `role` attribútumok.
+  ================================================================================
+  -->
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Shopify Termékkép Duplikáció Audit Dashboard | benu.hu</title>
+  <meta name="description" content="Automatizált vizuális termékkép duplikáció szűrő és minőségbiztosítási dashboard Shopify webáruházakhoz." />
+  <meta name="theme-color" content="#0f172a" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-main: #090d16;
+      --bg-card: rgba(18, 26, 43, 0.85);
+      --bg-card-hover: rgba(26, 37, 61, 0.95);
+      --bg-input: #131d31;
+      --border-color: rgba(255, 255, 255, 0.08);
+      --border-focus: #38bdf8;
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --text-sub: #cbd5e1;
+      --accent-primary: #0284c7;
+      --accent-primary-hover: #0369a1;
+      --accent-keep: #10b981;
+      --accent-keep-bg: rgba(16, 185, 129, 0.12);
+      --accent-delete: #f43f5e;
+      --accent-delete-bg: rgba(244, 63, 94, 0.12);
+      --accent-badge: #6366f1;
+      --shadow-sm: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
+      --shadow-lg: 0 10px 25px -3px rgba(0, 0, 0, 0.5);
+      --radius-sm: 8px;
+      --radius-md: 12px;
+      --radius-lg: 16px;
+      --font: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: var(--font);
+      background-color: var(--bg-main);
+      color: var(--text-main);
+      line-height: 1.5;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      background-image: 
+        radial-gradient(circle at 15% 10%, rgba(2, 132, 199, 0.12) 0%, transparent 40%),
+        radial-gradient(circle at 85% 90%, rgba(99, 102, 241, 0.08) 0%, transparent 40%);
+      background-attachment: fixed;
+    }
+
+    a {
+      color: var(--border-focus);
+      text-decoration: none;
+      transition: color 0.2s;
+    }
+    a:hover {
+      text-decoration: underline;
+    }
+
+    button, input, select {
+      font-family: inherit;
+    }
+
+    :focus-visible {
+      outline: 2px solid var(--border-focus);
+      outline-offset: 2px;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 1440px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    /* HEADER */
+    header {
+      border-bottom: 1px solid var(--border-color);
+      backdrop-filter: blur(12px);
+      background: rgba(9, 13, 22, 0.85);
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      padding: 16px 0;
+    }
+    .header-content {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+    .logo-area {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .logo-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: var(--radius-sm);
+      background: linear-gradient(135deg, #0284c7, #6366f1);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      font-size: 20px;
+      color: #ffffff;
+      box-shadow: 0 4px 12px rgba(2, 132, 199, 0.4);
+    }
+    .logo-text h1 {
+      font-size: 1.25rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+    .logo-text p {
+      font-size: 0.825rem;
+      color: var(--text-muted);
+    }
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    /* BUTTONS */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 16px;
+      border-radius: var(--radius-sm);
+      font-size: 0.875rem;
+      font-weight: 600;
+      cursor: pointer;
+      border: 1px solid transparent;
+      transition: all 0.2s ease;
+    }
+    .btn-primary {
+      background: var(--accent-primary);
+      color: #ffffff;
+    }
+    .btn-primary:hover {
+      background: var(--accent-primary-hover);
+      box-shadow: 0 4px 12px rgba(2, 132, 199, 0.3);
+    }
+    .btn-outline {
+      background: var(--bg-input);
+      border-color: var(--border-color);
+      color: var(--text-main);
+    }
+    .btn-outline:hover {
+      background: var(--bg-card-hover);
+      border-color: var(--text-muted);
+    }
+
+    /* STATS BAR */
+    .stats-section {
+      padding: 32px 0 24px;
+    }
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 16px;
+    }
+    .stat-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-md);
+      padding: 20px;
+      backdrop-filter: blur(8px);
+      box-shadow: var(--shadow-sm);
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .stat-title {
+      font-size: 0.825rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .stat-value {
+      font-size: 1.85rem;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      color: var(--text-main);
+    }
+    .stat-meta {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }
+
+    /* CONTROLS & FILTERING */
+    .controls-section {
+      padding: 12px 0 24px;
+    }
+    .controls-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-md);
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .search-row {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .search-box {
+      flex: 1;
+      min-width: 260px;
+      position: relative;
+    }
+    .search-input {
+      width: 100%;
+      background: var(--bg-input);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-sm);
+      padding: 10px 16px 10px 40px;
+      color: var(--text-main);
+      font-size: 0.925rem;
+      transition: border-color 0.2s;
+    }
+    .search-input:focus {
+      border-color: var(--border-focus);
+    }
+    .search-icon {
+      position: absolute;
+      left: 14px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--text-muted);
+      pointer-events: none;
+    }
+    .select-box {
+      background: var(--bg-input);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-sm);
+      padding: 10px 16px;
+      color: var(--text-main);
+      font-size: 0.9rem;
+      cursor: pointer;
+    }
+
+    .prefix-pills {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      align-items: center;
+    }
+    .prefix-pill {
+      background: var(--bg-input);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-sm);
+      color: var(--text-sub);
+      padding: 4px 10px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .prefix-pill:hover, .prefix-pill.active {
+      background: var(--accent-primary);
+      border-color: var(--accent-primary);
+      color: #ffffff;
+    }
+
+    /* PRODUCT CARDS GRID */
+    .products-section {
+      padding-bottom: 60px;
+      flex: 1;
+    }
+    .product-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(440px, 1fr));
+      gap: 20px;
+    }
+    @media (max-width: 540px) {
+      .product-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .product-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-lg);
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      box-shadow: var(--shadow-sm);
+      transition: transform 0.2s, border-color 0.2s, box-shadow 0.2s;
+    }
+    .product-card:hover {
+      border-color: rgba(255, 255, 255, 0.18);
+      box-shadow: var(--shadow-lg);
+    }
+
+    .product-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 12px;
+      border-bottom: 1px solid var(--border-color);
+      padding-bottom: 12px;
+    }
+    .product-title {
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: var(--text-main);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .product-meta-badge {
+      background: var(--bg-input);
+      color: var(--text-muted);
+      font-size: 0.75rem;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 4px;
+      white-space: nowrap;
+    }
+
+    /* IMAGE COMPARISON */
+    .comparison-container {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+    .image-column {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      border-radius: var(--radius-md);
+      padding: 10px;
+    }
+    .image-column.keep {
+      background: var(--accent-keep-bg);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+    }
+    .image-column.delete {
+      background: var(--accent-delete-bg);
+      border: 1px solid rgba(244, 63, 94, 0.3);
+    }
+
+    .image-tag {
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .image-tag.keep { color: var(--accent-keep); }
+    .image-tag.delete { color: var(--accent-delete); }
+
+    .image-preview-wrapper {
+      position: relative;
+      width: 100%;
+      padding-top: 100%;
+      background: #ffffff;
+      border-radius: var(--radius-sm);
+      overflow: hidden;
+    }
+    .image-preview-wrapper img {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      padding: 6px;
+    }
+
+    .image-specs {
+      font-size: 0.775rem;
+      color: var(--text-sub);
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .spec-item {
+      display: flex;
+      justify-content: space-between;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .spec-label {
+      color: var(--text-muted);
+    }
+
+    .card-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      border-top: 1px solid var(--border-color);
+      padding-top: 12px;
+      margin-top: auto;
+    }
+    .distance-badge {
+      background: var(--bg-input);
+      border: 1px solid var(--border-color);
+      padding: 4px 8px;
+      border-radius: 6px;
+      font-size: 0.775rem;
+      font-weight: 600;
+      color: var(--border-focus);
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 80px 20px;
+      background: var(--bg-card);
+      border: 1px dashed var(--border-color);
+      border-radius: var(--radius-lg);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+    }
+    .empty-state h3 {
+      font-size: 1.25rem;
+      font-weight: 700;
+    }
+    .empty-state p {
+      color: var(--text-muted);
+      max-width: 480px;
+    }
+
+    /* FOOTER */
+    footer {
+      border-top: 1px solid var(--border-color);
+      padding: 24px 0;
+      background: rgba(9, 13, 22, 0.95);
+      margin-top: auto;
+      font-size: 0.85rem;
+      color: var(--text-muted);
+    }
+    .footer-content {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    /* TOAST NOTIFICATION */
+    #toast {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      background: #0284c7;
+      color: #ffffff;
+      padding: 12px 20px;
+      border-radius: var(--radius-md);
+      font-size: 0.875rem;
+      font-weight: 600;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4);
+      transform: translateY(100px);
+      opacity: 0;
+      transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+      z-index: 100;
+    }
+    #toast.show {
+      transform: translateY(0);
+      opacity: 1;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- HEADER -->
+  <header role="banner">
+    <div class="container header-content">
+      <div class="logo-area">
+        <div class="logo-icon" aria-hidden="true">B</div>
+        <div class="logo-text">
+          <h1>Termékkép Duplikáció Dashboard</h1>
+          <p>benu.hu | Shopify Vizuális Képaudit</p>
+        </div>
+      </div>
+      <div class="header-actions">
+        <button id="btnDownloadCsv" class="btn btn-primary" aria-label="CSV Riport letöltése">
+          <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+          CSV Letöltése
+        </button>
+        <button id="btnCopyGraphql" class="btn btn-outline" aria-label="Shopify GraphQL törlési mutáció másolása">
+          <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"></path></svg>
+          GraphQL Törlés Másolása
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- STATS -->
+  <section class="stats-section" aria-label="Összegző statisztikák">
+    <div class="container stats-grid">
+      <div class="stat-card">
+        <span class="stat-title">Vizsgált Termékek</span>
+        <span id="statTotalScanned" class="stat-value">0</span>
+        <span class="stat-meta">Sitemap katalógusból</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-title">Duplikált Termékek</span>
+        <span id="statDupProducts" class="stat-value" style="color: #f43f5e;">0</span>
+        <span id="statDupRate" class="stat-meta">0% az összes termékből</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-title">Redundáns Képpárok</span>
+        <span id="statDupPairs" class="stat-value" style="color: #38bdf8;">0</span>
+        <span class="stat-meta">Törlésre jelölt képek</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-title">Utolsó Audit Időpontja</span>
+        <span id="statLastScan" class="stat-value" style="font-size: 1.25rem; font-weight: 700; margin-top: 6px;">-</span>
+        <span id="statScanMode" class="stat-meta">Automatikus GitHub Action</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- CONTROLS & FILTERING -->
+  <section class="controls-section" aria-label="Szűrők és keresés">
+    <div class="container">
+      <div class="controls-card">
+        <div class="search-row">
+          <div class="search-box">
+            <svg class="search-icon" width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+            <input type="text" id="searchInput" class="search-input" placeholder="Keresés terméknév, URL vagy azonosító alapján..." aria-label="Termék keresése" />
+          </div>
+          <select id="sortSelect" class="select-box" aria-label="Rendezési szempont">
+            <option value="name_asc">Név szerint (A-Z)</option>
+            <option value="name_desc">Név szerint (Z-A)</option>
+            <option value="dist_asc">Legnagyobb képi egyezés (Legkisebb távolság)</option>
+          </select>
+        </div>
+
+        <!-- PREFIX FILTER PILLS -->
+        <div class="prefix-pills" id="prefixContainer" role="group" aria-label="Kezdőbetű szűrők">
+          <button class="prefix-pill active" data-prefix="ALL">Mind</button>
+          <!-- A-Z pills generated dynamically -->
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- PRODUCTS GRID -->
+  <main class="products-section" role="main">
+    <div class="container">
+      <div id="productGrid" class="product-grid" aria-live="polite">
+        <!-- Dynamic Cards -->
+      </div>
+      <div id="emptyState" class="empty-state" style="display: none;">
+        <svg width="48" height="48" fill="none" stroke="#94a3b8" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+        <h3>Nem található duplikáció a szűrés alapján</h3>
+        <p>Próbáld módosítani a keresési kulcsszót vagy válassz egy másik kezdőbetűt.</p>
+      </div>
+    </div>
+  </main>
+
+  <!-- FOOTER -->
+  <footer role="contentinfo">
+    <div class="container footer-content">
+      <div>Shopify Termékkép Duplikáció Szűrő &bull; benu.hu</div>
+      <div>WCAG 2.2 AA Megfelelőség &bull; Perceptual Hashing (dHash + pHash)</div>
+    </div>
+  </footer>
+
+  <div id="toast" role="alert" aria-live="assertive">Értesítés szövege</div>
+
+  <script>
+    // Beágyazott kezdeti mintaadatok (ha a data/duplicates.json még nem érhető el vagy lokális futtatás esetén)
+    const INITIAL_SAMPLE_DATA = {
+      "metadata": {
+        "scan_date": new Date().toISOString(),
+        "scan_timestamp_formatted": "2026-09-02 14:15:00",
+        "sitemap_url": "https://benu.hu/sitemap.xml",
+        "total_scanned_products": 5095,
+        "total_products_with_duplicates": 1,
+        "total_duplicate_pairs": 1,
+        "threshold": 6,
+        "starts_with": "mind"
+      },
+      "products": [
+        {
+          "product_id": 9011394445531,
+          "product_title": "Allegra 120 mg filmtabletta 30 db",
+          "product_url": "https://benu.hu/products/allegra-120-mg-filmtabletta-30x",
+          "product_handle": "allegra-120-mg-filmtabletta-30x",
+          "duplicate_pairs": [
+            {
+              "keep": {
+                "id": "72522192552266",
+                "url": "https://cdn.shopify.com/s/files/1/0769/7278/5883/files/5be56e98-df22-4a73-98c5-4d2c9c7e2694.png?v=1783073753",
+                "dimensions": "1200x1200"
+              },
+              "delete": {
+                "id": "70967182524746",
+                "url": "https://cdn.shopify.com/s/files/1/0769/7278/5883/files/ceecb915-59ea-4326-8901-676e729e0d15.jpg?v=1780662067",
+                "dimensions": "500x500"
+              },
+              "dhash_distance": 0,
+              "phash_distance": 2,
+              "min_distance": 0
+            }
+          ]
+        }
+      ]
+    };
+
+    let auditData = INITIAL_SAMPLE_DATA;
+    let selectedPrefix = "ALL";
+    let searchQuery = "";
+    let sortOption = "name_asc";
+
+    // Toast megjelenítő
+    function showToast(message) {
+      const toast = document.getElementById("toast");
+      toast.textContent = message;
+      toast.classList.add("show");
+      setTimeout(() => toast.classList.remove("show"), 3000);
+    }
+
+    // JSON betöltése (data/duplicates.json)
+    async function loadAuditData() {
+      try {
+        const response = await fetch("data/duplicates.json?t=" + Date.now());
+        if (response.ok) {
+          const json = await response.json();
+          if (json && json.products) {
+            auditData = json;
+          }
+        }
+      } catch (err) {
+        console.warn("data/duplicates.json nem tölthető be közvetlenül, mintaadatok használatban:", err);
+      }
+      renderDashboard();
+    }
+
+    // Kezdőbetű pill-ek generálása
+    function setupPrefixPills() {
+      const container = document.getElementById("prefixContainer");
+      const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
+      
+      alphabet.forEach(letter => {
+        const btn = document.createElement("button");
+        btn.className = "prefix-pill";
+        btn.dataset.prefix = letter.toLowerCase();
+        btn.textContent = letter;
+        btn.addEventListener("click", () => {
+          document.querySelectorAll(".prefix-pill").forEach(p => p.classList.remove("active"));
+          btn.classList.add("active");
+          selectedPrefix = letter.toLowerCase();
+          renderCards();
+        });
+        container.appendChild(btn);
+      });
+
+      const allBtn = container.querySelector('[data-prefix="ALL"]');
+      allBtn.addEventListener("click", () => {
+        document.querySelectorAll(".prefix-pill").forEach(p => p.classList.remove("active"));
+        allBtn.classList.add("active");
+        selectedPrefix = "ALL";
+        renderCards();
+      });
+    }
+
+    // Statisztikák renderelése
+    function renderStats() {
+      const meta = auditData.metadata || {};
+      const totalScanned = meta.total_scanned_products || 0;
+      const totalDupProducts = meta.total_products_with_duplicates || (auditData.products ? auditData.products.length : 0);
+      const totalDupPairs = meta.total_duplicate_pairs || 0;
+      const scanDate = meta.scan_timestamp_formatted || meta.scan_date || "-";
+
+      document.getElementById("statTotalScanned").textContent = totalScanned.toLocaleString();
+      document.getElementById("statDupProducts").textContent = totalDupProducts.toLocaleString();
+      document.getElementById("statDupPairs").textContent = totalDupPairs.toLocaleString();
+      document.getElementById("statLastScan").textContent = scanDate;
+
+      if (totalScanned > 0) {
+        const rate = ((totalDupProducts / totalScanned) * 100).toFixed(1);
+        document.getElementById("statDupRate").textContent = `${rate}% arány a katalógusban`;
+      }
+    }
+
+    // Kártyák szűrése és renderelése
+    function renderCards() {
+      const grid = document.getElementById("productGrid");
+      const emptyState = document.getElementById("emptyState");
+      grid.innerHTML = "";
+
+      let filtered = (auditData.products || []).filter(p => {
+        const titleMatch = (p.product_title || "").toLowerCase().includes(searchQuery.toLowerCase());
+        const handleMatch = (p.product_handle || "").toLowerCase().includes(searchQuery.toLowerCase());
+        const idMatch = String(p.product_id || "").includes(searchQuery);
+        const matchesSearch = titleMatch || handleMatch || idMatch;
+
+        let matchesPrefix = true;
+        if (selectedPrefix !== "ALL") {
+          const handle = (p.product_handle || "").toLowerCase();
+          matchesPrefix = handle.startsWith(selectedPrefix);
+        }
+
+        return matchesSearch && matchesPrefix;
+      });
+
+      // Rendezés
+      filtered.sort((a, b) => {
+        if (sortOption === "name_asc") return (a.product_title || "").localeCompare(b.product_title || "");
+        if (sortOption === "name_desc") return (b.product_title || "").localeCompare(a.product_title || "");
+        if (sortOption === "dist_asc") {
+          const distA = a.duplicate_pairs && a.duplicate_pairs[0] ? a.duplicate_pairs[0].min_distance : 99;
+          const distB = b.duplicate_pairs && b.duplicate_pairs[0] ? b.duplicate_pairs[0].min_distance : 99;
+          return distA - distB;
+        }
+        return 0;
+      });
+
+      if (filtered.length === 0) {
+        emptyState.style.display = "flex";
+      } else {
+        emptyState.style.display = "none";
+      }
+
+      filtered.forEach(p => {
+        p.duplicate_pairs.forEach((pair, pairIdx) => {
+          const card = document.createElement("article");
+          card.className = "product-card";
+          card.innerHTML = `
+            <div class="product-header">
+              <div>
+                <h2 class="product-title">
+                  <a href="${p.product_url}" target="_blank" rel="noopener noreferrer" title="Megnyitás a benu.hu-n">
+                    ${p.product_title}
+                    <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
+                  </a>
+                </h2>
+                <div style="font-size: 0.775rem; color: var(--text-muted); margin-top: 4px;">ID: ${p.product_id} &bull; ${p.product_handle}</div>
+              </div>
+              <span class="product-meta-badge">Pár #${pairIdx + 1}</span>
+            </div>
+
+            <div class="comparison-container">
+              <!-- MEGTARTANDÓ -->
+              <div class="image-column keep">
+                <div class="image-tag keep">
+                  <span>✓ Megtartandó</span>
+                  <span>${pair.keep.dimensions}</span>
+                </div>
+                <div class="image-preview-wrapper">
+                  <img src="${pair.keep.url}" alt="Megtartandó kép előnézet" loading="lazy" />
+                </div>
+                <div class="image-specs">
+                  <div class="spec-item"><span class="spec-label">Media ID:</span> <span>${pair.keep.id}</span></div>
+                  <button class="btn btn-outline" style="padding: 4px 8px; font-size: 0.75rem; margin-top: 4px;" onclick="copyToClipboard('${pair.keep.id}', 'Megtartandó Media ID kimásolva!')">ID Másolása</button>
+                </div>
+              </div>
+
+              <!-- TÖRLENDŐ -->
+              <div class="image-column delete">
+                <div class="image-tag delete">
+                  <span>✗ Törlendő</span>
+                  <span>${pair.delete.dimensions}</span>
+                </div>
+                <div class="image-preview-wrapper">
+                  <img src="${pair.delete.url}" alt="Törlendő kép előnézet" loading="lazy" />
+                </div>
+                <div class="image-specs">
+                  <div class="spec-item"><span class="spec-label">Media ID:</span> <span>${pair.delete.id}</span></div>
+                  <button class="btn btn-outline" style="padding: 4px 8px; font-size: 0.75rem; margin-top: 4px; border-color: rgba(244, 63, 94, 0.4);" onclick="copyToClipboard('${pair.delete.id}', 'Törlendő Media ID kimásolva!')">ID Másolása</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="card-footer">
+              <span class="distance-badge">Hasonlósági eltérés: dHash ${pair.dhash_distance} / pHash ${pair.phash_distance}</span>
+              <a href="${p.product_url}" target="_blank" rel="noopener noreferrer" style="font-size: 0.8rem; font-weight: 600;">Termékoldal &rarr;</a>
+            </div>
+          `;
+          grid.appendChild(card);
+        });
+      });
+    }
+
+    function copyToClipboard(text, successMessage) {
+      navigator.clipboard.writeText(text).then(() => {
+        showToast(successMessage || "Vágólapra másolva!");
+      });
+    }
+
+    // CSV Letöltés
+    function downloadCsv() {
+      let csvContent = "data:text/csv;charset=utf-8,\uFEFF";
+      csvContent += "product_id,product_title,product_url,delete_image_id,delete_image_url,delete_image_dimensions,keep_image_id,keep_image_url,keep_image_dimensions,dhash_distance,phash_distance,min_distance\n";
+
+      (auditData.products || []).forEach(p => {
+        (p.duplicate_pairs || []).forEach(pair => {
+          const row = [
+            `"${p.product_id}"`,
+            `"${(p.product_title || '').replace(/"/g, '""')}"`,
+            `"${p.product_url}"`,
+            `"${pair.delete.id}"`,
+            `"${pair.delete.url}"`,
+            `"${pair.delete.dimensions}"`,
+            `"${pair.keep.id}"`,
+            `"${pair.keep.url}"`,
+            `"${pair.keep.dimensions}"`,
+            pair.dhash_distance,
+            pair.phash_distance,
+            pair.min_distance
+          ].join(",");
+          csvContent += row + "\n";
+        });
+      });
+
+      const encodedUri = encodeURI(csvContent);
+      const link = document.createElement("a");
+      link.setAttribute("href", encodedUri);
+      link.setAttribute("download", `shopify_duplicate_images_${new Date().toISOString().slice(0,10)}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      showToast("CSV Riport letöltése elindult!");
+    }
+
+    // GraphQL Törlési Kód másolása
+    function copyGraphqlMutation() {
+      const deleteIds = [];
+      (auditData.products || []).forEach(p => {
+        (p.duplicate_pairs || []).forEach(pair => {
+          if (pair.delete && pair.delete.id) {
+            deleteIds.push(`"gid://shopify/MediaImage/${pair.delete.id}"`);
+          }
+        });
+      });
+
+      if (deleteIds.length === 0) {
+        showToast("Nincs törlendő kép az adathalmazban!");
+        return;
+      }
+
+      const mutation = `# Shopify Admin GraphQL API - Duplikált képek törlése (${deleteIds.length} db kép)
+mutation {
+  fileDelete(fileIds: [
+    ${deleteIds.slice(0, 50).join(",\n    ")}
+  ]) {
+    deletedFileIds
+    userErrors {
+      field
+      message
+    }
+  }
+}`;
+
+      copyToClipboard(mutation, `Shopify GraphQL törlési mutáció kimásolva (${deleteIds.length} kép)!`);
+    }
+
+    function renderDashboard() {
+      renderStats();
+      renderCards();
+    }
+
+    // Eseménykezelők
+    document.addEventListener("DOMContentLoaded", () => {
+      setupPrefixPills();
+      loadAuditData();
+
+      document.getElementById("searchInput").addEventListener("input", (e) => {
+        searchQuery = e.target.value;
+        renderCards();
+      });
+
+      document.getElementById("sortSelect").addEventListener("change", (e) => {
+        sortOption = e.target.value;
+        renderCards();
+      });
+
+      document.getElementById("btnDownloadCsv").addEventListener("click", downloadCsv);
+      document.getElementById("btnCopyGraphql").addEventListener("click", copyGraphqlMutation);
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,117 @@
+# ================================================================================
+# FUNKCIONÁLIS SPECIFIKÁCIÓ (FSR) ÉS FELADATLEÍRÁS
+# ================================================================================
+# Munkafolyamat: .github/workflows/deduplicate_audit.yml
+# Verzió: 1.0.0
+# 
+# 1. Mire használjuk:
+#    - Automatizált CI/CD munkafolyamat a Shopify képi duplikáció-audit futtatására
+#      és a statikus GitHub Pages dashboard (`index.html` + `data/duplicates.json`)
+#      folyamatos, automatikus közzétételére.
+#
+# 2. Kapcsolódó User Storyk:
+#    - US-CI-01: Rendszerüzemeltetőként szeretném, hogy az audit minden héten automatikusan
+#      lefusson, és frissítse a nyilvános/belső GitHub Pages dashboardot.
+#    - US-CI-02: Termékmenedzserként szeretném a GitHub felületén (Actions fülön) egy gombnyomással
+#      egyedi kezdőbetűre vagy duplikátum-számra szűrve elindítani az auditot.
+#
+# 3. Kapcsolódó felületek és integrációk:
+#    - GitHub Actions Runner (Ubuntu Linux / Python 3.11)
+#    - GitHub Pages Deployment API (`actions/deploy-pages`)
+#    - shopify_image_deduplicator.py és requirements.txt
+#
+# 4. SEO & WCAG Megfontolások:
+#    - Folyamatos minőségbiztosítás a Shopify bolton a redundáns képek kiszűrésére,
+#      javítva a webáruház Core Web Vitals (LCP) értékeit és az akadálymentes navigációt.
+# ================================================================================
+
+name: Shopify Termekkeptisztitas es Dashboard Frissites
+
+on:
+  # 1. Időzített futtatás (Minden hétfő hajnali 04:00 UTC)
+  schedule:
+    - cron: '0 4 * * 1'
+
+  # 2. Kézi indítás testreszabható paraméterekkel a GitHub Actions felületről
+  workflow_dispatch:
+    inputs:
+      starts_with:
+        description: 'Kezdőbetű(k) vagy prefix szűrés (pl. "a", "b", "all", "béres" vagy hagyd üresen a teljeshez)'
+        required: false
+        default: ''
+      limit:
+        description: 'Maximálisan átvizsgálandó termékek száma (0 = összes illeszkedő)'
+        required: false
+        default: '0'
+      max_dupes:
+        description: 'Hány duplikált termék megtalálásakor álljon le? (0 = nincs korlát)'
+        required: false
+        default: '0'
+      threshold:
+        description: 'Hamming-távolság küszöbérték (alapértelmezett: 6)'
+        required: false
+        default: '6'
+
+# Jogosultságok a GitHub Pages közzétételhez
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Csak egy párhuzamos deploy futhat egyszerre
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  audit_and_deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Repozitórium letöltése
+        uses: actions/checkout@v4
+
+      - name: Python környezet beállítása
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Függőségek telepítése
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Duplikáció-szűrő script futtatása
+        run: |
+          ARGS=""
+          if [ -n "${{ inputs.starts_with }}" ]; then
+            ARGS="$ARGS --starts-with \"${{ inputs.starts_with }}\""
+          fi
+          if [ -n "${{ inputs.limit }}" ] && [ "${{ inputs.limit }}" != "0" ]; then
+            ARGS="$ARGS --limit ${{ inputs.limit }}"
+          fi
+          if [ -n "${{ inputs.max_dupes }}" ] && [ "${{ inputs.max_dupes }}" != "0" ]; then
+            ARGS="$ARGS --max-dupes ${{ inputs.max_dupes }}"
+          fi
+          if [ -n "${{ inputs.threshold }}" ]; then
+            ARGS="$ARGS --threshold ${{ inputs.threshold }}"
+          fi
+          
+          # Futtatás JSON és CSV kimenettel a 'data/' mappába
+          mkdir -p data
+          eval python shopify_image_deduplicator.py $ARGS --json data/duplicates.json
+
+      - name: GitHub Pages konfigurálása
+        uses: actions/configure-pages@v4
+
+      - name: Webes állományok csomagolása
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: '.'
+
+      - name: Publikálás GitHub Pages-re
+        id: deployment
+        uses: actions/deploy-pages@v4

@@ -1,0 +1,17 @@
+# ================================================================================
+# FSR (Funkcionális Specifikáció) Megjegyzés:
+# Mire használjuk: Git verziókezelő által figyelmen kívül hagyandó ideiglenes
+#                 és lokális fájlok (.venv, cache, lokális CSV exportok).
+# Kapcsolódó User Storyk: US-CI-01
+# ================================================================================
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+ENV/
+.idea/
+.vscode/
+# Lokális CSV fájlok
+duplicate_images_report_*.csv
+duplicate_images_report.csv
