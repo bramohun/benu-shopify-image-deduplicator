@@ -105,7 +105,7 @@ jobs:
           eval python shopify_image_deduplicator.py $ARGS --json data/duplicates.json
 
       - name: GitHub Pages konfigurálása
-        uses: actions/configure-pages@v4
+        uses: actions/configure-pages@v5
 
       - name: Webes állományok csomagolása
         uses: actions/upload-pages-artifact@v3
