@@ -1,13 +1,13 @@
 {
   "metadata": {
-    "scan_date": "2026-09-02T14:18:34.700107",
-    "scan_timestamp_formatted": "2026-09-02 14:18:34",
-    "sitemap_url": "Single URL Test",
-    "total_scanned_products": 1,
+    "scan_date": "2026-09-02T14:28:56.329653",
+    "scan_timestamp_formatted": "2026-09-02 14:28:56",
+    "sitemap_url": "https://benu.hu/sitemap.xml",
+    "total_scanned_products": 5,
     "total_products_with_duplicates": 0,
     "total_duplicate_pairs": 0,
     "threshold": 6,
-    "starts_with": "mind"
+    "starts_with": "all"
   },
   "products": []
 }
