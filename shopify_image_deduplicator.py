@@ -414,7 +414,7 @@ def main():
             sys.exit(1)
 
         # Kezdőbetű / prefix szűrés
-        if args.starts_with:
+        if args.starts_with and args.starts_with.strip().lower() not in ("all", "mind", "*", "none", "false", ""):
             prefixes = [p.strip().lower() for p in args.starts_with.split(",") if p.strip()]
             print(f"Szűrés kezdőbetűkre            : {prefixes}")
             
@@ -427,6 +427,7 @@ def main():
             print(f"Illeszkedő termékek            : {len(matched_urls)} db (az összes {len(all_urls)} termékből)")
             target_urls = matched_urls
         else:
+            print("Szűrés kezdőbetűkre            : NINCS (Minden termék feldolgozása)")
             target_urls = all_urls
 
         limit_text = f"Első {args.limit} termék" if args.limit > 0 else f"ÖSSZES illeszkedő ({len(target_urls)} termék)"

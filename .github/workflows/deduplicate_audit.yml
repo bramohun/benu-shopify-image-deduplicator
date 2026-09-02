@@ -89,7 +89,7 @@ jobs:
       - name: Duplikáció-szűrő script futtatása
         run: |
           ARGS=""
-          if [ -n "${{ inputs.starts_with }}" ]; then
+          if [ -n "${{ inputs.starts_with }}" ] && [ "${{ inputs.starts_with }}" != "all" ] && [ "${{ inputs.starts_with }}" != "ALL" ] && [ "${{ inputs.starts_with }}" != "mind" ]; then
             ARGS="$ARGS --starts-with \"${{ inputs.starts_with }}\""
           fi
           if [ -n "${{ inputs.limit }}" ] && [ "${{ inputs.limit }}" != "0" ]; then
