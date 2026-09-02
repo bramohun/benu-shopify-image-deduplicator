@@ -1,0 +1,51 @@
+# ================================================================================
+# FUNKCIONÁLIS SPECIFIKÁCIÓ (FSR) ÉS FELADATLEÍRÁS
+# ================================================================================
+# Munkafolyamat: .github/workflows/deploy_pages.yml
+# Verzió: 1.0.0
+# 
+# 1. Mire használjuk:
+#    - Gyors, automatizált GitHub Pages közzététel a 'main' ágra érkező commitok
+#      (új adatok, dashboard UI javítások) esetén.
+#
+# 2. Kapcsolódó User Storyk:
+#    - US-CI-01: Rendszerüzemeltetőként szeretném, hogy a repozitóriumba rögzített
+#      audit adatok és felületi módosítások azonnal, várakozás nélkül élesedjenek a Pages oldalon.
+# ================================================================================
+
+name: Gyors GitHub Pages Publikalas
+
+on:
+  push:
+    branches: [ main ]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Repozitórium letöltése
+        uses: actions/checkout@v4
+
+      - name: GitHub Pages konfigurálása
+        uses: actions/configure-pages@v5
+
+      - name: Webes állományok csomagolása
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: '.'
+
+      - name: Publikálás GitHub Pages-re
+        id: deployment
+        uses: actions/deploy-pages@v4
