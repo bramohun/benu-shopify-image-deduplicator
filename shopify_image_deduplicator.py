@@ -48,6 +48,7 @@ import sys
 import io
 import csv
 import json
+import time
 import argparse
 import datetime
 import xml.etree.ElementTree as ET
@@ -55,6 +56,31 @@ from urllib.parse import urlparse
 import requests
 from PIL import Image
 import imagehash
+
+
+def format_time_duration(seconds: float) -> str:
+    """
+    Másodpercek formázása olvasható HH:MM:SS vagy MM:SS formátumba.
+    """
+    secs = int(max(0, seconds))
+    h = secs // 3600
+    m = (secs % 3600) // 60
+    s = secs % 60
+    if h > 0:
+        return f"{h:02d}:{m:02d}:{s:02d}"
+    return f"{m:02d}:{s:02d}"
+
+
+def create_progress_bar(current: int, total: int, length: int = 15) -> str:
+    """
+    Vizuális progress bar generálása konzolra (biztonságos ASCII kódolással).
+    """
+    if total <= 0:
+        return "[" + "-" * length + "]"
+    fraction = min(1.0, current / total)
+    filled = int(fraction * length)
+    bar = "=" * filled + "-" * (length - filled)
+    return f"[{bar}]"
 
 # Alapértelmezett konfigurációs értékek
 DEFAULT_SITEMAP_URL = "https://benu.hu/sitemap.xml"
@@ -415,9 +441,26 @@ def main():
     all_duplicates = []
     products_with_duplicates = set()
     products_json_list = []
+    total_items = len(target_urls)
+    start_time = time.time()
     
     for idx, url in enumerate(target_urls, 1):
-        print(f"[{idx}/{len(target_urls)}] Vizsgálat: {url}")
+        elapsed = time.time() - start_time
+        pct = (idx / total_items) * 100 if total_items > 0 else 0
+        
+        # Sebesség és hátralévő idő (ETA) becslése
+        avg_time_per_item = elapsed / idx if idx > 0 else 0
+        remaining_items = total_items - idx
+        eta_seconds = remaining_items * avg_time_per_item
+        speed = idx / elapsed if elapsed > 0 else 0
+        
+        pbar = create_progress_bar(idx, total_items, length=15)
+        elapsed_str = format_time_duration(elapsed)
+        eta_str = format_time_duration(eta_seconds) if idx > 1 else "--:--"
+        
+        print(f"\n[{idx}/{total_items} | {pct:5.1f}%] {pbar} | Eltelt: {elapsed_str} | Hátralévő (ETA): {eta_str} | Sebesség: {speed:.1f} termék/mp")
+        print(f"  Vizsgálat: {url}")
+        
         dups = process_single_product(url, args.threshold)
         if dups:
             products_with_duplicates.add(url)
@@ -456,13 +499,19 @@ def main():
                 print("!" * 80)
                 break
 
+    total_duration = time.time() - start_time
+    total_duration_str = format_time_duration(total_duration)
+    overall_speed = idx / total_duration if total_duration > 0 else 0
+
     # Időbélyeg generálása a befejezés pillanatában (yyyymmdd-hhmmss)
     finish_timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     output_filepath = args.output if args.output else f"duplicate_images_report_{finish_timestamp}.csv"
 
     print("\n" + "=" * 80)
     print(f"[3/3] Összegzés és Riport mentése: {output_filepath}")
-    print(f"Vizsgált termékek száma        : {idx} / {len(target_urls)}")
+    print(f"Vizsgált termékek száma        : {idx} / {total_items}")
+    print(f"Vizsgálat teljes ideje         : {total_duration_str} ({total_duration:.1f} másodperc)")
+    print(f"Átlagos feldolgozási sebesség  : {overall_speed:.2f} termék / másodperc")
     print(f"Duplikációt tartalmazó termékek: {len(products_with_duplicates)} db")
     print(f"Összes talált duplikált képpár : {len(all_duplicates)} db")
     print("=" * 80)
