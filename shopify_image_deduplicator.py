@@ -61,9 +61,15 @@ DEFAULT_SITEMAP_URL = "https://benu.hu/sitemap.xml"
 DEFAULT_HAMMING_THRESHOLD = 6  # 0-6 közötti érték: vizuálisan szinte azonos képek
 DEFAULT_TEST_LIMIT = 5
 
+# Fejlécek beállítása:
+# Kifejezett Bot / Audit User-Agent és JSON Accept fejlécek használata,
+# amellyel biztosítható, hogy a Shopify és a Google Analytics szerveroldali
+# session-számlálói automatikusan crawlerként kezeljék és NEM növeljék
+# a valós látogatottsági / konverziós statisztikákat.
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+    "User-Agent": "BenuInternalAuditBot/1.0 (+https://benu.hu; ShopifyImageDeduplicator)",
+    "Accept": "application/json, application/xml, text/xml, */*",
+    "X-Purpose": "Internal-SEO-Audit"
 }
 
 
