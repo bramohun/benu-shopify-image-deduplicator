@@ -85,7 +85,7 @@ def create_progress_bar(current: int, total: int, length: int = 15) -> str:
 # Alapértelmezett konfigurációs értékek
 DEFAULT_SITEMAP_URL = "https://benu.hu/sitemap.xml"
 DEFAULT_HAMMING_THRESHOLD = 6  # 0-6 közötti érték: vizuálisan szinte azonos képek
-DEFAULT_TEST_LIMIT = 5
+DEFAULT_TEST_LIMIT = 0  # 0 = minden termék feldolgozása
 
 # Fejlécek beállítása:
 # Kifejezett Bot / Audit User-Agent és JSON Accept fejlécek használata,

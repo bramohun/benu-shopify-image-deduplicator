@@ -92,10 +92,10 @@ jobs:
           if [ -n "${{ inputs.starts_with }}" ] && [ "${{ inputs.starts_with }}" != "all" ] && [ "${{ inputs.starts_with }}" != "ALL" ] && [ "${{ inputs.starts_with }}" != "mind" ]; then
             ARGS="$ARGS --starts-with \"${{ inputs.starts_with }}\""
           fi
-          if [ -n "${{ inputs.limit }}" ] && [ "${{ inputs.limit }}" != "0" ]; then
+          if [ -n "${{ inputs.limit }}" ]; then
             ARGS="$ARGS --limit ${{ inputs.limit }}"
           fi
-          if [ -n "${{ inputs.max_dupes }}" ] && [ "${{ inputs.max_dupes }}" != "0" ]; then
+          if [ -n "${{ inputs.max_dupes }}" ]; then
             ARGS="$ARGS --max-dupes ${{ inputs.max_dupes }}"
           fi
           if [ -n "${{ inputs.threshold }}" ]; then
