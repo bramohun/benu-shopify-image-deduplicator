@@ -1,13 +1,24 @@
 {
   "metadata": {
-    "scan_date": "2026-09-02T14:28:56.329653",
-    "scan_timestamp_formatted": "2026-09-02 14:28:56",
-    "sitemap_url": "https://benu.hu/sitemap.xml",
-    "total_scanned_products": 5,
+    "scan_date": "2026-09-02T15:18:40.939274",
+    "scan_timestamp_formatted": "2026-09-02 15:18:40",
+    "sitemap_url": "Single URL Test",
+    "total_scanned_products": 1,
     "total_products_with_duplicates": 0,
     "total_duplicate_pairs": 0,
+    "total_failed_urls": 1,
     "threshold": 6,
-    "starts_with": "all"
+    "starts_with": "mind"
   },
+  "failed_urls": [
+    {
+      "timestamp": "2026-09-02 15:18:40",
+      "target_type": "PRODUCT_JSON",
+      "product_url": "https://benu.hu/products/non-existent-sample-product-xyz-123",
+      "failed_url": "https://benu.hu/products/non-existent-sample-product-xyz-123.json",
+      "error_type": "REQUEST_TIMEOUT_OR_BLOCKED",
+      "error_message": "Nem érkezett válasz vagy túllépte az újrapróbálkozási limitet"
+    }
+  ],
   "products": []
 }

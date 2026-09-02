@@ -31,6 +31,10 @@ Verzió: 1.0.0
    - US-IMG-06: Mint Rendszerüzemeltető, szeretném elkerülni a Shopify és Cloudflare HTTP 429
      (Too Many Requests / Rate Limiting) túlterhelés-védelmi blokkolásait automatikus
      exponenciális visszalépéssel (Exponential Backoff), Retry-After támogatással és állítható késleltetéssel.
+   - US-IMG-07: Mint Rendszerüzemeltető és SEO specialista, szeretném a vizsgálat során
+     bármilyen okból (404, 429 túlterhelés, hálózati timeout, kép-letöltési hiba)
+     meghiúsult URL-eket egy különálló riportban (failed_urls_report_YYYYMMDD-HHMMSS.csv)
+     kigyűjteni az utólagos elemzéshez és javításhoz.
 
 3. Kapcsolódó egyéb funkciók és felületek:
    - Shopify Storefront (.json termék-végpontok) és Sitemap XML feldolgozás.
@@ -103,6 +107,23 @@ HEADERS = {
 
 # Globális HTTP Session a kapcsolatok újrahasznosításához
 HTTP_SESSION = requests.Session()
+
+# Globális lista a vizsgálat során sikertelen vagy hibás URL-ek nyilvántartására
+FAILED_REQUESTS = []
+
+
+def record_failed_url(target_type: str, url: str, product_url: str, error_type: str, error_message: str):
+    """
+    Rögzíti azokat az URL-eket, amelyeket hiba miatt nem sikerült elérni vagy feldolgozni.
+    """
+    FAILED_REQUESTS.append({
+        "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "target_type": target_type,
+        "product_url": product_url,
+        "failed_url": url,
+        "error_type": error_type,
+        "error_message": error_message
+    })
 
 
 def robust_http_get(url: str, max_retries: int = 5, initial_timeout: int = 15) -> requests.Response:
@@ -181,7 +202,7 @@ def load_image_with_white_background(image_bytes: bytes) -> Image.Image:
     return img.convert("RGB")
 
 
-def calculate_image_hashes(image_url: str):
+def calculate_image_hashes(image_url: str, product_url: str = ""):
     """
     Letölti az adott képet és kiszámítja a perceptuális hasheket (dHash és pHash).
     """
@@ -192,6 +213,8 @@ def calculate_image_hashes(image_url: str):
             # Ha a méretezett változat nem elérhető, próbáljuk az eredetit
             resp = robust_http_get(image_url, max_retries=3, initial_timeout=12)
             if not resp or resp.status_code != 200:
+                err_code = f"HTTP_{resp.status_code}" if resp else "DOWNLOAD_TIMEOUT"
+                record_failed_url("PRODUCT_IMAGE", image_url, product_url, err_code, "Nem sikerült letölteni a termékképet")
                 return None, None
                 
         img = load_image_with_white_background(resp.content)
@@ -200,6 +223,7 @@ def calculate_image_hashes(image_url: str):
         return d_hash, p_hash
     except Exception as e:
         print(f"  [FIGYELMEZTETÉS] Képfeldolgozási hiba ({image_url}): {e}")
+        record_failed_url("PRODUCT_IMAGE", image_url, product_url, "IMAGE_PROCESS_EXCEPTION", str(e))
         return None, None
 
 
@@ -248,12 +272,15 @@ def process_single_product(product_url: str, threshold: int) -> list:
         resp = robust_http_get(json_url, max_retries=5, initial_timeout=15)
         if not resp:
             print(f"  [HIBA] Nem érkezett válasz a termékoldaltól: {json_url}")
+            record_failed_url("PRODUCT_JSON", json_url, clean_url, "REQUEST_TIMEOUT_OR_BLOCKED", "Nem érkezett válasz vagy túllépte az újrapróbálkozási limitet")
             return duplicates
         elif resp.status_code == 404:
             print(f"  [HIBA] Termék JSON nem található (404): {json_url}")
+            record_failed_url("PRODUCT_JSON", json_url, clean_url, "HTTP_404", "Termék JSON nem található (404 Not Found)")
             return duplicates
         elif resp.status_code != 200:
             print(f"  [HIBA] HTTP {resp.status_code} a termék lekérésekor: {json_url}")
+            record_failed_url("PRODUCT_JSON", json_url, clean_url, f"HTTP_{resp.status_code}", f"Szerver válaszkód hiba: HTTP {resp.status_code}")
             return duplicates
 
         data = resp.json().get("product", {})
@@ -275,7 +302,7 @@ def process_single_product(product_url: str, threshold: int) -> list:
             width = img.get("width") or 0
             height = img.get("height") or 0
             
-            d_hash, p_hash = calculate_image_hashes(img_src)
+            d_hash, p_hash = calculate_image_hashes(img_src, product_url=clean_url)
             if d_hash is not None:
                 processed_images.append({
                     "id": img_id,
@@ -329,6 +356,7 @@ def process_single_product(product_url: str, threshold: int) -> list:
                         })
     except Exception as e:
         print(f"  [HIBA] Kivétel a termék feldolgozásakor ({product_url}): {e}")
+        record_failed_url("PRODUCT_JSON", json_url, clean_url, "PRODUCT_PARSE_EXCEPTION", str(e))
 
     return duplicates
 
@@ -345,6 +373,7 @@ def fetch_product_urls_from_sitemap(sitemap_url: str) -> list:
         resp = robust_http_get(sitemap_url, max_retries=4, initial_timeout=20)
         if not resp or resp.status_code != 200:
             print(f"[HIBA] Nem sikerült letölteni a sitemap-et (HTTP {resp.status_code if resp else 'N/A'})")
+            record_failed_url("SITEMAP", sitemap_url, "", f"HTTP_{resp.status_code}" if resp else "SITEMAP_TIMEOUT", "Nem sikerült letölteni a fő sitemap-et")
             return []
 
         root = ET.fromstring(resp.content)
@@ -368,8 +397,11 @@ def fetch_product_urls_from_sitemap(sitemap_url: str) -> list:
                         for elem in sub_root.findall("ns:url/ns:loc", namespace):
                             if elem.text and "/products/" in elem.text:
                                 product_urls.append(elem.text.strip())
+                    else:
+                        record_failed_url("SUB_SITEMAP", sub_url, "", f"HTTP_{sub_resp.status_code}" if sub_resp else "SUB_SITEMAP_TIMEOUT", "Nem sikerült letölteni az al-sitemap-et")
                 except Exception as sub_err:
                     print(f"  [HIBA] Al-sitemap hiba ({sub_url}): {sub_err}")
+                    record_failed_url("SUB_SITEMAP", sub_url, "", "SUB_SITEMAP_EXCEPTION", str(sub_err))
         else:
             # Közvetlen termék sitemap
             for elem in root.findall("ns:url/ns:loc", namespace):
@@ -382,6 +414,7 @@ def fetch_product_urls_from_sitemap(sitemap_url: str) -> list:
         return unique_urls
     except Exception as e:
         print(f"[HIBA] Nem sikerült feldolgozni a sitemap XML-t: {e}")
+        record_failed_url("SITEMAP", sitemap_url, "", "SITEMAP_ROOT_EXCEPTION", str(e))
         return []
 
 
@@ -431,6 +464,12 @@ def main():
         type=float,
         default=0.1,
         help="Kérések közötti finom késleltetés másodpercben a Rate Limit (HTTP 429) elkerüléséhez (alapértelmezett: 0.1s)"
+    )
+    parser.add_argument(
+        "--failed-output",
+        type=str,
+        default=None,
+        help="Különálló CSV fájl a sikertelen / elérhetetlen URL-ek mentéséhez (alapértelmezett: failed_urls_report_YYYYMMDD-HHMMSS.csv)"
     )
     parser.add_argument(
         "--output",
@@ -575,9 +614,10 @@ def main():
     print(f"Átlagos feldolgozási sebesség  : {overall_speed:.2f} termék / másodperc")
     print(f"Duplikációt tartalmazó termékek: {len(products_with_duplicates)} db")
     print(f"Összes talált duplikált képpár : {len(all_duplicates)} db")
+    print(f"Sikertelen / Hibás URL-ek      : {len(FAILED_REQUESTS)} db")
     print("=" * 80)
 
-    # 1. Riport mentése CSV fájlba (vesszővel elválasztva, UTF-8-sig BOM kódolással)
+    # 1. Duplikációs Riport mentése CSV fájlba (vesszővel elválasztva, UTF-8-sig BOM kódolással)
     try:
         with open(output_filepath, mode="w", newline="", encoding="utf-8-sig") as f:
             fieldnames = [
@@ -602,7 +642,28 @@ def main():
     except Exception as e:
         print(f"[HIBA] Nem sikerült menteni a CSV riportot: {e}")
 
-    # 2. Strukturált JSON mentése a webes dashboard számára
+    # 2. Sikertelen URL-ek mentése külön CSV riportba
+    if FAILED_REQUESTS:
+        failed_output_filepath = args.failed_output if args.failed_output else f"failed_urls_report_{finish_timestamp}.csv"
+        try:
+            with open(failed_output_filepath, mode="w", newline="", encoding="utf-8-sig") as ff:
+                failed_fieldnames = [
+                    "timestamp",
+                    "target_type",
+                    "product_url",
+                    "failed_url",
+                    "error_type",
+                    "error_message"
+                ]
+                f_writer = csv.DictWriter(ff, fieldnames=failed_fieldnames, delimiter=",")
+                f_writer.writeheader()
+                f_writer.writerows(FAILED_REQUESTS)
+
+            print(f"[SIKER] A Sikertelen URL-ek külön riportja elkészült: {os.path.abspath(failed_output_filepath)}")
+        except Exception as e:
+            print(f"[HIBA] Nem sikerült menteni a sikertelen URL riportot: {e}")
+
+    # 3. Strukturált JSON mentése a webes dashboard számára
     if args.json:
         try:
             json_dir = os.path.dirname(args.json)
@@ -617,9 +678,11 @@ def main():
                     "total_scanned_products": idx,
                     "total_products_with_duplicates": len(products_with_duplicates),
                     "total_duplicate_pairs": len(all_duplicates),
+                    "total_failed_urls": len(FAILED_REQUESTS),
                     "threshold": args.threshold,
                     "starts_with": args.starts_with if args.starts_with else "mind"
                 },
+                "failed_urls": FAILED_REQUESTS,
                 "products": products_json_list
             }
 

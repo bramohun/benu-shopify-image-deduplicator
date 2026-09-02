@@ -15,3 +15,5 @@ ENV/
 # Lokális CSV fájlok
 duplicate_images_report_*.csv
 duplicate_images_report.csv
+failed_urls_report_*.csv
+failed_urls_report.csv

@@ -21,6 +21,8 @@
        a legfrissebb CSV riportot egyetlen kattintással.
      - US-DASH-03: Fejlesztőként szeretném egy kattintással kimásolni a Shopify GraphQL
        törlési mutációt a redundáns képek API-s eltávolításához.
+     - US-DASH-04: Rendszerüzemeltetőként szeretném a dashboardon közvetlenül látni a vizsgálat
+       során meghiúsult URL-ek számát és egy kattintással letölteni a hibariportot (CSV).
 
   3. Kapcsolódó felületek és integrációk:
      - GitHub Pages tárhely & GitHub Actions automatikus frissítés (`data/duplicates.json`).
@@ -531,9 +533,13 @@
         </div>
       </div>
       <div class="header-actions">
-        <button id="btnDownloadCsv" class="btn btn-primary" aria-label="CSV Riport letöltése">
+        <button id="btnDownloadCsv" class="btn btn-primary" aria-label="Duplikáció CSV Riport letöltése">
           <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
-          CSV Letöltése
+          Duplikációk CSV
+        </button>
+        <button id="btnDownloadFailedCsv" class="btn btn-outline" style="display: none; border-color: rgba(245, 158, 11, 0.4); color: #fbbf24;" aria-label="Sikertelen URL-ek CSV Riport letöltése">
+          <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+          Hibás URL-ek CSV (<span id="failedBtnCount">0</span>)
         </button>
         <button id="btnCopyGraphql" class="btn btn-outline" aria-label="Shopify GraphQL törlési mutáció másolása">
           <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"></path></svg>
@@ -562,8 +568,13 @@
         <span class="stat-meta">Törlésre jelölt képek</span>
       </div>
       <div class="stat-card">
+        <span class="stat-title">Sikertelen URL-ek</span>
+        <span id="statFailedUrls" class="stat-value" style="color: #10b981;">0</span>
+        <span id="statFailedMeta" class="stat-meta">Minden URL elérhető</span>
+      </div>
+      <div class="stat-card">
         <span class="stat-title">Utolsó Audit Időpontja</span>
-        <span id="statLastScan" class="stat-value" style="font-size: 1.25rem; font-weight: 700; margin-top: 6px;">-</span>
+        <span id="statLastScan" class="stat-value" style="font-size: 1.15rem; font-weight: 700; margin-top: 6px;">-</span>
         <span id="statScanMode" class="stat-meta">Automatikus GitHub Action</span>
       </div>
     </div>
@@ -721,12 +732,30 @@
       const totalScanned = meta.total_scanned_products || 0;
       const totalDupProducts = meta.total_products_with_duplicates || (auditData.products ? auditData.products.length : 0);
       const totalDupPairs = meta.total_duplicate_pairs || 0;
+      const totalFailed = meta.total_failed_urls || (auditData.failed_urls ? auditData.failed_urls.length : 0);
       const scanDate = meta.scan_timestamp_formatted || meta.scan_date || "-";
 
       document.getElementById("statTotalScanned").textContent = totalScanned.toLocaleString();
       document.getElementById("statDupProducts").textContent = totalDupProducts.toLocaleString();
       document.getElementById("statDupPairs").textContent = totalDupPairs.toLocaleString();
       document.getElementById("statLastScan").textContent = scanDate;
+
+      const statFailedElem = document.getElementById("statFailedUrls");
+      const statFailedMetaElem = document.getElementById("statFailedMeta");
+      const btnDownloadFailed = document.getElementById("btnDownloadFailedCsv");
+      const failedBtnCount = document.getElementById("failedBtnCount");
+
+      statFailedElem.textContent = totalFailed.toLocaleString();
+      if (totalFailed > 0) {
+        statFailedElem.style.color = "#f59e0b";
+        statFailedMetaElem.textContent = `${totalFailed} db hiba észlelve`;
+        btnDownloadFailed.style.display = "inline-flex";
+        failedBtnCount.textContent = totalFailed;
+      } else {
+        statFailedElem.style.color = "#10b981";
+        statFailedMetaElem.textContent = "Minden URL elérhető (100% siker)";
+        btnDownloadFailed.style.display = "none";
+      }
 
       if (totalScanned > 0) {
         const rate = ((totalDupProducts / totalScanned) * 100).toFixed(1);
@@ -839,7 +868,7 @@
       });
     }
 
-    // CSV Letöltés
+    // Duplikációk CSV Letöltése
     function downloadCsv() {
       let csvContent = "data:text/csv;charset=utf-8,\uFEFF";
       csvContent += "product_id,product_title,product_url,delete_image_id,delete_image_url,delete_image_dimensions,keep_image_id,keep_image_url,keep_image_dimensions,dhash_distance,phash_distance,min_distance\n";
@@ -871,7 +900,40 @@
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-      showToast("CSV Riport letöltése elindult!");
+      showToast("Duplikációk CSV Riport letöltése elindult!");
+    }
+
+    // Sikertelen / Hibás URL-ek CSV Letöltése
+    function downloadFailedCsv() {
+      const failedList = auditData.failed_urls || [];
+      if (failedList.length === 0) {
+        showToast("Nincsenek rögzített hibás URL-ek!");
+        return;
+      }
+
+      let csvContent = "data:text/csv;charset=utf-8,\uFEFF";
+      csvContent += "timestamp,target_type,product_url,failed_url,error_type,error_message\n";
+
+      failedList.forEach(item => {
+        const row = [
+          `"${item.timestamp || ''}"`,
+          `"${item.target_type || ''}"`,
+          `"${(item.product_url || '').replace(/"/g, '""')}"`,
+          `"${(item.failed_url || '').replace(/"/g, '""')}"`,
+          `"${item.error_type || ''}"`,
+          `"${(item.error_message || '').replace(/"/g, '""')}"`
+        ].join(",");
+        csvContent += row + "\n";
+      });
+
+      const encodedUri = encodeURI(csvContent);
+      const link = document.createElement("a");
+      link.setAttribute("href", encodedUri);
+      link.setAttribute("download", `shopify_failed_urls_${new Date().toISOString().slice(0,10)}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      showToast("Hibás URL-ek CSV Riport letöltése elindult!");
     }
 
     // GraphQL Törlési Kód másolása
@@ -927,6 +989,7 @@ mutation {
       });
 
       document.getElementById("btnDownloadCsv").addEventListener("click", downloadCsv);
+      document.getElementById("btnDownloadFailedCsv").addEventListener("click", downloadFailedCsv);
       document.getElementById("btnCopyGraphql").addEventListener("click", copyGraphqlMutation);
     });
   </script>
