@@ -350,9 +350,9 @@ def process_single_product(product_url: str, threshold: int) -> list:
                             "keep_image_id": keep_img["id"],
                             "keep_image_url": keep_img["src"],
                             "keep_image_dimensions": f"{keep_img['width']}x{keep_img['height']}",
-                            "dhash_distance": d_dist,
-                            "phash_distance": p_dist,
-                            "min_distance": min_dist
+                            "dhash_distance": int(d_dist),
+                            "phash_distance": int(p_dist),
+                            "min_distance": int(min_dist)
                         })
     except Exception as e:
         print(f"  [HIBA] Kivétel a termék feldolgozásakor ({product_url}): {e}")
@@ -690,6 +690,13 @@ def main():
                 json.dump(json_data, jf, indent=2, ensure_ascii=False)
 
             print(f"[SIKER] A Dashboard JSON adathalmaz elkészült: {os.path.abspath(args.json)}")
+
+            # 4. JavaScript állomány mentése (window.BENU_AUDIT_DATA) a CDN gyorsítótár-hibák és aszinkron parse hibák kivédésére
+            js_filepath = os.path.splitext(args.json)[0] + ".js"
+            with open(js_filepath, mode="w", encoding="utf-8") as jsf:
+                jsf.write("window.BENU_AUDIT_DATA = " + json.dumps(json_data, indent=2, ensure_ascii=False) + ";\n")
+
+            print(f"[SIKER] A Dashboard JS modul elkészült: {os.path.abspath(js_filepath)}")
         except Exception as e:
             print(f"[HIBA] Nem sikerült menteni a JSON adathalmazt: {e}")
 

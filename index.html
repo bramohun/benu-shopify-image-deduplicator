@@ -44,6 +44,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <!-- Audit Adatok Közvetlen Betöltése (CDN Cache és JSON Truncation elleni védelem) -->
+  <script src="data/duplicates.js"></script>
   <style>
     :root {
       --bg-main: #090d16;
@@ -682,10 +684,16 @@
       setTimeout(() => toast.classList.remove("show"), 3000);
     }
 
-    // JSON betöltése (data/duplicates.json)
+    // JSON betöltése (data/duplicates.json vagy window.BENU_AUDIT_DATA)
     async function loadAuditData() {
+      if (window.BENU_AUDIT_DATA && window.BENU_AUDIT_DATA.products && window.BENU_AUDIT_DATA.products.length > 0) {
+        auditData = window.BENU_AUDIT_DATA;
+        renderDashboard();
+        return;
+      }
+
       try {
-        const response = await fetch("data/duplicates.json?t=" + Date.now());
+        const response = await fetch("data/duplicates.json?t=" + Date.now(), { cache: "no-store" });
         if (response.ok) {
           const json = await response.json();
           if (json && json.products) {
@@ -693,7 +701,7 @@
           }
         }
       } catch (err) {
-        console.warn("data/duplicates.json nem tölthető be közvetlenül, mintaadatok használatban:", err);
+        console.warn("data/duplicates.json fetch hiba, mintaadatok használatban:", err);
       }
       renderDashboard();
     }

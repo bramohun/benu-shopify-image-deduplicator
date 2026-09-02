@@ -1,4 +1,4 @@
-{
+window.BENU_AUDIT_DATA = {
   "metadata": {
     "scan_date": "2026-09-02T15:27:00.575222",
     "scan_timestamp_formatted": "2026-09-02 13:23:00",
@@ -15856,4 +15856,4 @@
       ]
     }
   ]
-}
+};
